@@ -27,7 +27,14 @@ on property:ro.vendor.hw.ram=8GB && property:persist.sys.zram_wb_enabled=""
     setprop persist.sys.zram_wb_enabled true
     setprop ro.vendor.zram.product_swapon true
 on property:ro.vendor.hw.ram=12GB && property:persist.sys.zram_wb_enabled=""
-    setprop persist.sys.zram_wb_enabled false
+    setprop persist.sys.zram_wb_enabled true
+# Set Zram writeback size for 6~12G RAM
+on property:ro.vendor.hw.ram=6GB && property:persist.sys.zram_wb_size=""
+    setprop persist.sys.zram_wb_size 1536M
+on property:ro.vendor.hw.ram=8GB && property:persist.sys.zram_wb_size="" && property:ro.product.is_prc=""
+    setprop persist.sys.zram_wb_size 2048M
+on property:ro.vendor.hw.ram=12GB && property:persist.sys.zram_wb_size=""
+    setprop persist.sys.zram_wb_size 3072M
 
 # Enable iorapd for 2~12G RAM
 on property:ro.vendor.hw.ram=2GB
@@ -57,5 +64,3 @@ on property:sys.boot_completed=1 && property:persist.sys.zram_wb_enabled=false
     write /proc/sys/vm/page-cluster 0
 on property:sys.boot_completed=1 && property:persist.sys.zram_wb_enabled=true
     write /proc/sys/vm/page-cluster 4
-
-
