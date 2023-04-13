@@ -119,6 +119,8 @@ struct PropertyAuditData {
     const char* name;
 };
 
+static bool weaken_prop_override_security = false;
+
 static int PropertyAuditCallback(void* data, security_class_t /*cls*/, char* buf, size_t len) {
     auto* d = reinterpret_cast<PropertyAuditData*>(data);
 
@@ -189,8 +191,8 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
 
     prop_info* pi = (prop_info*) __system_property_find(name.c_str());
     if (pi != nullptr) {
-        // ro.* properties are actually "write-once".
-        if (StartsWith(name, "ro.")) {
+        // ro.* properties are actually "write-once", unless the system decides to
+        if (StartsWith(name, "ro.") && !weaken_prop_override_security) {
             *error = "Read-only property was already set";
             return PROP_ERROR_READ_ONLY_PROPERTY;
         }
@@ -1286,6 +1288,60 @@ static void ProcessBootconfig() {
     });
 }
 
+static void SetSafetyNetProps() {
+    // Check whether this is a normal boot, and whether the bootloader is actually locked
+    std::string boot_mode = android::base::GetProperty("ro.boot.mode", "normal");
+    // Do not spoof on eng build
+    std::string build_type = android::base::GetProperty("ro.build.type", "");
+    auto isNormalBoot = (boot_mode == "normal" || boot_mode == "reboot") && build_type != "eng";
+
+    // Bail out if this is recovery, fastbootd, or anything other than a normal boot.
+    // fastbootd, in particular, needs the real values so it can allow flashing on
+    // unlocked bootloaders.
+    if (!isNormalBoot) {
+        return;
+    }
+
+    // Weaken property override security to set safetynet props
+    weaken_prop_override_security = true;
+
+    // Spoof properties
+    InitPropertySet("ro.boot.flash.locked", "1");
+    InitPropertySet("ro.boot.verifiedbootstate", "green");
+    InitPropertySet("ro.boot.veritymode", "enforcing");
+    InitPropertySet("ro.boot.vbmeta.device_state", "locked");
+    InitPropertySet("vendor.boot.verifiedbootstate", "green");
+    InitPropertySet("vendor.boot.vbmeta.device_state", "locked");
+    InitPropertySet("ro.boot.warranty_bit", "0");
+    InitPropertySet("ro.warranty_bit", "0");
+    InitPropertySet("ro.secure", "1");
+    InitPropertySet("ro.adb.secure", "1");
+    InitPropertySet("ro.debuggable", "0");
+    InitPropertySet("ro.vendor.warranty_bit", "0");
+    InitPropertySet("ro.vendor.boot.warranty_bit", "0");
+    InitPropertySet("ro.build.type", "user");
+    InitPropertySet("ro.system.build.type", "user");
+    InitPropertySet("ro.system_ext.build.type", "user");
+    InitPropertySet("ro.vendor.build.type", "user");
+    InitPropertySet("ro.product.build.type", "user");
+    InitPropertySet("ro.odm.build.type", "user");
+    InitPropertySet("ro.vendor_dlkm.build.type", "user");
+    InitPropertySet("ro.bootimage.build.type", "user");
+    InitPropertySet("ro.build.keys", "release-keys");
+    InitPropertySet("ro.build.tags", "release-keys");
+    InitPropertySet("ro.system.build.tags", "release-keys");
+    InitPropertySet("ro.system_ext.build.tags", "release-keys");
+    InitPropertySet("ro.bootimage.build.tags", "release-keys");
+    InitPropertySet("ro.product.build.tags", "release-keys");
+    InitPropertySet("ro.odm.build.tags", "release-keys");
+    InitPropertySet("ro.vendor.build.tags", "release-keys");
+    InitPropertySet("ro.vendor_dlkm.build.tags", "release-keys");
+
+    // Restore the normal property override security after safetynet props have
+    // been set
+    weaken_prop_override_security = false;
+}
+
 void PropertyInit() {
     selinux_callback cb;
     cb.func_audit = PropertyAuditCallback;
@@ -1305,6 +1361,9 @@ void PropertyInit() {
     ProcessKernelDt();
     ProcessKernelCmdline();
     ProcessBootconfig();
+
+    // Report valid verified boot chain to help pass Google SafetyNet integrity checks
+    SetSafetyNetProps();
 
     // Propagate the kernel variables to internal variables
     // used by init as well as the current required properties.
