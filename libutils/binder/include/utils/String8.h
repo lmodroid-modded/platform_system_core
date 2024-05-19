@@ -65,6 +65,7 @@ public:
     static String8              formatV(const char* fmt, va_list args);
 
     inline  const char*         c_str() const;
+    inline  const char*         string() const;
 
     inline  size_t              size() const;
     inline  size_t              bytes() const;
@@ -148,13 +149,6 @@ private:
 
             const char* mString;
 
-// These symbols are for potential backward compatibility with prebuilts. To be removed.
-#ifdef ENABLE_STRING8_OBSOLETE_METHODS
-public:
-#else
-private:
-#endif
-    inline  const char*         string() const;
     inline  bool                isEmpty() const;
 };
 
